@@ -17,7 +17,10 @@ module.exports = function (context, req) {
             GET_changes();
             break;
         case "POST":
-            POST_change();
+            POST_change();//Create change
+            break;
+        case "PUT":
+            PUT_change();//Confirm change
             break;
         default:
             notAllowed();
@@ -199,7 +202,7 @@ module.exports = function (context, req) {
             if (originAgencyId) {
                 originAgency = await searchAgency(originAgencyId);
             }
-            if (originsubsidiaryId) {
+            if (originSubsidiaryId) {
                 originSubsidiary = await searchSubsidiary(originSubsidiaryId);
             }
             if (destinationAgencyId) {
@@ -224,8 +227,8 @@ module.exports = function (context, req) {
 
                     // Create a change base object.
                     change = {
-                        descripcion: req.body.descripcion,
-                        fecha_hora: date,
+                        descripcion_salida: req.body.descripcion,
+                        fecha_hora_salida: date,
                         nombre_chofer: req.body.nombre_chofer,
                         persona: req.body.persona,
                         sucursal_origen: originSubsidiary,
@@ -257,7 +260,18 @@ module.exports = function (context, req) {
 
         }
         catch (error) {
-            context.res = error;
+            if (error.status) {
+                context.res = error;
+            }
+            else {
+                context.res = {
+                    status: 500,
+                    body: error,
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                }
+            }
             context.done();
         }
 
@@ -337,7 +351,7 @@ module.exports = function (context, req) {
 
         }
         async function searchAgency(agencyId) {
-            await createMongoClient();
+            await createManagementClient();
             return new Promise(function (resolve, reject) {
                 try {
                     management_client
@@ -403,7 +417,7 @@ module.exports = function (context, req) {
             });
         }
         async function searchFridge(fridgeInventoryNumber) {
-            await createMongoClient();
+            await createManagementClient();
             return new Promise(function (resolve, reject) {
                 try {
                     management_client
@@ -452,7 +466,7 @@ module.exports = function (context, req) {
                                 }
                                 if (docs['sucursal'] || docs['udn']) {
                                     if (docs['sucursal']) {
-                                        if (docs['sucursal']._id !== originSubsidiaryId) {
+                                        if (docs.sucursal['_id'].toString() !== originSubsidiaryId) {
                                             err = {
                                                 status: 400,
                                                 body: {
@@ -465,7 +479,9 @@ module.exports = function (context, req) {
                                             reject(err);
                                             return;
                                         }
-                                        if (docs['udn']._id !== originAgencyId) {
+                                    }
+                                    if (docs['udn']) {
+                                        if (docs.udn['_id'].toString() !== originAgencyId) {
                                             err = {
                                                 status: 400,
                                                 body: {
@@ -498,7 +514,7 @@ module.exports = function (context, req) {
             });
         }
         async function searchSubsidiary(subsidiaryId) {
-            await createMongoClient();
+            await createManagementClient();
             return new Promise(function (resolve, reject) {
                 try {
                     management_client
@@ -604,6 +620,52 @@ module.exports = function (context, req) {
             });
 
         }
+        // async function searchUnileverStatus(code) {
+        //     await createManagementClient();
+        //     return new Promise(function (resolve, reject) {
+        //         try {
+        //             management_client
+        //                 .db(MANAGEMENT_DB_NAME)
+        //                 .collection('unilevers')
+        //                 .findOne({ code: code },
+        //                     function (error, docs) {
+        //                         if (error) {
+        //                             reject({
+        //                                 status: 500,
+        //                                 body: error.toString(),
+        //                                 headers: {
+        //                                     'Content-Type': 'application / json'
+        //                                 }
+        //                             });
+        //                             return;
+        //                         }
+        //                         if (!docs) {
+        //                             reject({
+        //                                 status: 400,
+        //                                 body: {
+        //                                     message: 'MG-016'
+        //                                 },
+        //                                 headers: {
+        //                                     'Content-Type': 'application / json'
+        //                                 }
+        //                             });
+        //                         }
+        //                         resolve(docs);
+        //                     }
+        //                 );
+        //         }
+        //         catch (error) {
+        //             context.log(error);
+        //             reject({
+        //                 status: 500,
+        //                 body: error.toString(),
+        //                 headers: {
+        //                     "Content-Type": "application/json"
+        //                 }
+        //             })
+        //         }
+        //     });
+        // }
         async function writeChange() {
             await createEntriesDeparturesClient();
             return new Promise(function (resolve, reject) {
@@ -639,18 +701,12 @@ module.exports = function (context, req) {
         async function updateFridges(change) {
             let fridges = change['cabinets'];
             let fridgesArray = fridges.slice();
+            // let unlieverStatus = await searchUnileverStatus('0011');
 
             let newValues = {
                 sucursal: null,
                 udn: null
             };
-
-            // if (change.sucursal_destino) {
-            //     newValues.sucursal = change['sucursal_destino'];
-            // }
-            // if (change.udn_destino) {
-            //     newValues.udn = change['udn_destino'];
-            // }
 
             return new Promise(async function (resolve, reject) {
                 var fridgesLocationPromises = [];
@@ -678,7 +734,7 @@ module.exports = function (context, req) {
             });
         }
         async function updateFridge(newValues, fridgeId) {
-            await createMongoClient();
+            await createManagementClient();
             return new Promise(function (resolve, reject) {
                 try {
                     management_client
@@ -716,7 +772,429 @@ module.exports = function (context, req) {
         }
     }
 
+    async function PUT_change() {
 
+        validate();
+        //TODO: Get person data trough userid and save it in the change data
+        let change; //Base object
+        var userId = null;
+        var changeId = req.query['id'];
+
+        try {
+            if (changeId) {
+                change = await getChange(changeId);
+            }
+            let fridges = await searchAllFridges(req.body['cabinets']);
+
+            let precedentPromises = [change, fridges];
+
+            Promise.all(precedentPromises)
+                .then(async function () {
+                    validateDestination();
+                    let date = new Date();
+                    let excedentFridges = getExcedentFridges(fridges, req.body.cabinets);
+                    let missingFridges = getMissingFridges(fridges, req.body.cabinets);
+                    // Create a change base object.
+                    newValues = {
+                        descripcion_entrada: req.body.descripcion,
+                        fecha_hora_entrada: date,
+                        persona: req.body.persona,
+                        cabinets: fridges,
+                        cabinets_excedentes: excedentFridges,
+                        cabinets_faltantes: missingFridges
+                    };
+
+                    let response = await updateChange(newValues, change['_id']);
+                    await updateFridges(response.ops[0]);
+
+                    context.res = {
+                        status: 200,
+                        body: response.ops[0],
+                        headers: {
+                            "Content-Type": "application/json"
+                        }
+                    }
+                    context.done();
+                })
+                .catch(function (error) {
+                    context.res = error;
+                    context.done();
+                });
+
+        }
+        catch (error) {
+            context.res = error;
+            context.done();
+        }
+
+        //Internal functions
+        function validate() {
+            //No id was provided
+            if (!req.query) {
+                context.res = {
+                    status: 400,
+                    body: {
+                        message: 'ES-069'
+                    },
+                    headers: {
+                        'Content-Type': 'application / json'
+                    }
+                };
+                context.done();
+            }
+            if (!req.query['id']) {
+                context.res = {
+                    status: 400,
+                    body: {
+                        message: 'ES-069'
+                    },
+                    headers: {
+                        'Content-Type': 'application / json'
+                    }
+                };
+                context.done();
+            }
+            //Fridge array validation
+            if (!req.body.cabinets) {
+                context.res = {
+                    status: 400,
+                    body: {
+                        message: 'ES-003'
+                    },
+                    headers: {
+                        'Content-Type': 'application / json'
+                    }
+                };
+                context.done();
+            }
+            if (req.body.cabinets.length === 0) {
+                context.res = {
+                    status: 400,
+                    body: {
+                        message: 'ES-003'
+                    },
+                    headers: {
+                        'Content-Type': 'application / json'
+                    }
+                };
+                context.done();
+            }
+
+        }
+        function validateDestination() {
+            //Destination validation
+            if (change['sucursal_destino']) {
+                if (change['sucursal_destino']._id.toString() !== req.body['sucursal_destino']) {
+                    context.res = {
+                        status: 400,
+                        body: {
+                            message: 'ES-067'
+                        },
+                        headers: {
+                            'Content-Type': 'application / json'
+                        }
+                    };
+                    context.done();
+                    return;
+                }
+            }
+            if (change['udn_destino']) {
+                if (change['udn_destino']._id.toString() !== req.body['udn_destino']) {
+                    context.res = {
+                        status: 400,
+                        body: {
+                            message: 'ES-068'
+                        },
+                        headers: {
+                            'Content-Type': 'application / json'
+                        }
+                    };
+                    context.done();
+                    return;
+                }
+            }
+        }
+        function searchAllFridges(fridgesId) {
+            let fridgesIdArray = fridgesId.slice();
+            return new Promise(async function (resolve, reject) {
+                var fridgesInfoPromises = [];
+                while (fridgesIdArray.length) {
+                    fridgesInfoPromises.push(
+                        searchFridge(
+                            fridgesIdArray.pop()
+                        )
+                    );
+                }
+                try {
+                    let fridgesArray = await Promise.all(fridgesInfoPromises);
+                    resolve(fridgesArray);
+                }
+                catch (error) {
+                    reject(error);
+                }
+            });
+        }
+        async function searchFridge(fridgeInventoryNumber) {
+            await createManagementClient();
+            return new Promise(function (resolve, reject) {
+                try {
+                    management_client
+                        .db(MANAGEMENT_DB_NAME)
+                        .collection('fridges')
+                        .findOne({ economico: fridgeInventoryNumber },
+                            function (error, docs) {
+                                if (error) {
+                                    reject({
+                                        status: 500,
+                                        body: error,
+                                        headers: {
+                                            'Content-Type': 'application / json'
+                                        }
+                                    });
+                                    return;
+                                }
+
+                                //Validations
+                                if (!docs) {
+                                    //Not found fridge
+                                    reject({
+                                        status: 400,
+                                        body: {
+                                            message: 'ES-046'
+                                        },
+                                        headers: {
+                                            'Content-Type': 'application / json'
+                                        }
+                                    });
+                                    return;
+                                }
+                                if (docs['establecimiento']) {
+                                    //Fridge is in a store
+                                    err = {
+                                        status: 400,
+                                        body: {
+                                            message: 'ES-005'
+                                        },
+                                        headers: {
+                                            'Content-Type': 'application / json'
+                                        }
+                                    };
+                                    reject(err);
+                                    return;
+                                }
+                                if (docs['sucursal'] || docs['udn']) {
+                                    if (docs['sucursal']) {
+                                        if (docs['sucursal']._id !== originSubsidiaryId) {
+                                            err = {
+                                                status: 400,
+                                                body: {
+                                                    message: 'ES-021'
+                                                },
+                                                headers: {
+                                                    'Content-Type': 'application / json'
+                                                }
+                                            };
+                                            reject(err);
+                                            return;
+                                        }
+                                        if (docs['udn']._id !== originAgencyId) {
+                                            err = {
+                                                status: 400,
+                                                body: {
+                                                    message: 'ES-022'
+                                                },
+                                                headers: {
+                                                    'Content-Type': 'application / json'
+                                                }
+                                            };
+                                            reject(err);
+                                            return;
+                                        }
+                                    }
+                                }
+                                //Resolve correctly if all validations are passed        
+                                resolve(docs);
+                            }
+                        );
+                }
+                catch (error) {
+                    context.log(error);
+                    reject({
+                        status: 500,
+                        body: error.toString(),
+                        headers: {
+                            "Content-Type": "application/json"
+                        }
+                    })
+                }
+            });
+        }
+        async function updateChange(newValues, changeId) {
+            await createEntriesDeparturesClient();
+            return new Promise(function (resolve, reject) {
+                try {
+                    management_client
+                        .db(ENTRIES_DEPARTURES_DB_NAME)
+                        .collection('Changes')
+                        .updateOne(
+                            { _id: mongodb.ObjectId(changeId) },
+                            { $set: newValues },
+                            function (error, docs) {
+                                if (error) {
+                                    reject({
+                                        status: 500,
+                                        body: error,
+                                        headers: {
+                                            'Content-Type': 'application / json'
+                                        }
+                                    });
+                                    return;
+                                }
+                                resolve(docs);
+                            }
+                        );
+                }
+                catch (error) {
+                    reject({
+
+                        status: 500,
+                        body: error,
+                        headers: {
+                            'Content-Type': 'application / json'
+                        }
+                    });
+                }
+            });
+        }
+        async function updateFridges(change) {
+            let fridges = change['cabinets'];
+            let fridgesArray = fridges.slice();
+
+            let newValues = {
+                sucursal: null,
+                udn: null
+            };
+
+            if (change.sucursal_destino) {
+                newValues.sucursal = change['sucursal_destino'];
+            }
+            if (change.udn_destino) {
+                newValues.udn = change['udn_destino'];
+            }
+
+            return new Promise(async function (resolve, reject) {
+                var fridgesLocationPromises = [];
+                while (fridgesArray.length) {
+                    fridgesLocationPromises.push(
+                        updateFridge(
+                            newValues,
+                            fridgesArray.pop()['_id']
+                        )
+                    );
+                }
+                try {
+                    let updatedFridgesArray = await Promise.all(fridgesLocationPromises);
+                    resolve(updatedFridgesArray);
+                }
+                catch (error) {
+                    reject({
+                        status: 500,
+                        body: error,
+                        headers: {
+                            'Content-Type': 'application / json'
+                        }
+                    });
+                }
+            });
+        }
+        async function updateFridge(newValues, fridgeId) {
+            await createManagementClient();
+            return new Promise(function (resolve, reject) {
+                try {
+                    management_client
+                        .db(MANAGEMENT_DB_NAME)
+                        .collection('fridges')
+                        .updateOne(
+                            { _id: mongodb.ObjectId(fridgeId) },
+                            { $set: newValues },
+                            function (error, docs) {
+                                if (error) {
+                                    reject({
+                                        status: 500,
+                                        body: error,
+                                        headers: {
+                                            'Content-Type': 'application / json'
+                                        }
+                                    });
+                                    return;
+                                }
+                                resolve(docs);
+                            }
+                        );
+                }
+                catch (error) {
+                    reject({
+
+                        status: 500,
+                        body: error,
+                        headers: {
+                            'Content-Type': 'application / json'
+                        }
+                    });
+                }
+            });
+        }
+        async function getChange(changeId) {
+            await createEntriesDeparturesClient();
+            return new Promise(function (resolve, reject) {
+                entries_departures_client
+                    .db(ENTRIES_DEPARTURES_DB_NAME)
+                    .collection('Changes')
+                    .findOne({ _id: mongodb.ObjectId(changeId) },
+                        function (error, docs) {
+                            if (error) {
+                                reject({
+                                    status: 500,
+                                    body: error.toString(),
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    }
+                                });
+                            }
+                            resolve(docs);
+                        }
+                    );
+            });
+        }
+        function getExcedentFridges(fridges, sentFridges) {
+            let excedentFridges = [];
+            for (let i = 0; i < fridges.length; i++) {
+                if (!sentFridges.find(
+                    function (fridge) {
+                        return fridge['_id'].toString() === fridges[i]._id.toString();
+                    }
+                )) {
+                    excedentFridges.push(fridges[i]);
+                }
+            }
+            return excedentFridges;
+        }
+        function getMissingFridges(fridges, sentFridges) {
+            let missingFridges = [];
+            for (let i = 0; i < sentFridges.length; i++) {
+                if (!fridges.find(
+                    function (fridge) {
+                        return fridge['_id'].toString() === sentFridges[i]._id.toString();
+                    }
+                )) {
+                    missingFridges.push(fridges[i]);
+                }
+            }
+            return missingFridges;
+        }
+    }
+
+    //Internal global functions 
     function createEntriesDeparturesClient() {
         return new Promise(function (resolve, reject) {
             if (!entries_departures_client) {
@@ -733,8 +1211,7 @@ module.exports = function (context, req) {
             }
         });
     }
-
-    function createMongoClient() {
+    function createManagementClient() {
         return new Promise(function (resolve, reject) {
             if (!management_client) {
                 mongodb.MongoClient.connect(connection_Management, function (error, _management_client) {
