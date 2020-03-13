@@ -227,6 +227,7 @@ module.exports = function (context, req) {
 
                     // Create a change base object.
                     change = {
+                        confirmado: false,
                         descripcion_salida: req.body.descripcion,
                         fecha_hora_salida: date,
                         nombre_chofer: req.body.nombre_chofer,
@@ -509,7 +510,7 @@ module.exports = function (context, req) {
                         headers: {
                             "Content-Type": "application/json"
                         }
-                    })
+                    });
                 }
             });
         }
@@ -792,10 +793,11 @@ module.exports = function (context, req) {
                 .then(async function () {
                     validateDestination();
                     let date = new Date();
-                    let excedentFridges = getExcedentFridges(fridges, req.body.cabinets);
-                    let missingFridges = getMissingFridges(fridges, req.body.cabinets);
+                    let excedentFridges = getExcedentFridges(fridges, change.cabinets);
+                    let missingFridges = getMissingFridges(fridges, change.cabinets);
                     // Create a change base object.
                     newValues = {
+                        confirmado: true,
                         descripcion_entrada: req.body.descripcion,
                         fecha_hora_entrada: date,
                         persona: req.body.persona,
@@ -805,11 +807,11 @@ module.exports = function (context, req) {
                     };
 
                     let response = await updateChange(newValues, change['_id']);
-                    await updateFridges(response.ops[0]);
+                    await updateFridges(change);
 
                     context.res = {
                         status: 200,
-                        body: response.ops[0],
+                        body: change,
                         headers: {
                             "Content-Type": "application/json"
                         }
@@ -823,7 +825,18 @@ module.exports = function (context, req) {
 
         }
         catch (error) {
-            context.res = error;
+            if (error.status) {
+                context.res = error;
+            }
+            else {
+                context.res = {
+                    status: 500,
+                    body: error,
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                }
+            }
             context.done();
         }
 
