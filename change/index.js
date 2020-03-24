@@ -51,24 +51,43 @@ module.exports = function (context, req) {
                 }
                 query['cabinets.economico'] = req.query['economico'];
             }
-            if (req.query['fecha_inicio'] || req.query['fecha_fin']) {
+            if (req.query['fecha_inicio_entrada'] || req.query['fecha_fin_entrada']) {
                 if (!query) {
                     query = {};
                 }
                 var fecha_hora;
-                if (req.query['fecha_inicio']) {
+                if (req.query['fecha_inicio_entrada']) {
                     if (!fecha_hora) {
                         fecha_hora = {};
                     }
-                    fecha_hora['$gte'] = new Date(new Date(req.query['fecha_inicio']).setHours(00, 00, 00));
+                    fecha_hora['$gte'] = new Date(new Date(req.query['fecha_inicio_entrada']).setHours(00, 00, 00));
                 }
-                if (req.query['fecha_fin']) {
+                if (req.query['fecha_fin_entrada']) {
                     if (!fecha_hora) {
                         fecha_hora = {};
                     }
-                    fecha_hora['$lte'] = new Date(new Date(req.query['fecha_fin']).setHours(23, 59, 59));
+                    fecha_hora['$lte'] = new Date(new Date(req.query['fecha_fin_entrada']).setHours(23, 59, 59));
                 }
-                query['fecha_hora'] = fecha_hora;
+                query['fecha_hora_entrada'] = fecha_hora;
+            }
+            if (req.query['fecha_inicio_salida'] || req.query['fecha_fin_salida']) {
+                if (!query) {
+                    query = {};
+                }
+                var fecha_hora;
+                if (req.query['fecha_inicio_salida']) {
+                    if (!fecha_hora) {
+                        fecha_hora = {};
+                    }
+                    fecha_hora['$gte'] = new Date(new Date(req.query['fecha_inicio_salida']).setHours(00, 00, 00));
+                }
+                if (req.query['fecha_fin_salida']) {
+                    if (!fecha_hora) {
+                        fecha_hora = {};
+                    }
+                    fecha_hora['$lte'] = new Date(new Date(req.query['fecha_fin_salida']).setHours(23, 59, 59));
+                }
+                query['fecha_hora_salida'] = fecha_hora;
             }
             if (req.query['sucursal_destino']) {
                 if (!query) {
