@@ -209,90 +209,90 @@ module.exports = function (context, req) {
         var transportDriverId = req.body['operador_transporte'];
         var transportKindId = req.body['tipo_transporte']; //Non mandatory
 
-        validate();
+        if (validate()) {
+            try {
+                let originAgency,
+                    originSubsidiary,
+                    destinationAgency,
+                    destinationSubsidiary,
+                    transportDriver,
+                    transportKind;
+                if (originAgencyId) {
+                    originAgency = await searchAgency(originAgencyId);
+                }
+                if (originSubsidiaryId) {
+                    originSubsidiary = await searchSubsidiary(originSubsidiaryId);
+                }
+                if (destinationAgencyId) {
+                    destinationAgency = await searchAgency(destinationAgencyId);
+                }
+                if (destinationSubsidiaryId) {
+                    destinationSubsidiary = await searchSubsidiary(destinationSubsidiaryId);
+                }
+                if (transportDriverId) {
+                    transportDriver = await searchTransportDriver(transportDriverId);
+                }
+                if (transportKindId) {
+                    transportKind = await searchTransportKind(transportKindId);
+                }
+                let fridges = await searchAllFridges(req.body['cabinets']);
 
-        try {
-            let originAgency,
-                originSubsidiary,
-                destinationAgency,
-                destinationSubsidiary,
-                transportDriver,
-                transportKind;
-            if (originAgencyId) {
-                originAgency = await searchAgency(originAgencyId);
-            }
-            if (originSubsidiaryId) {
-                originSubsidiary = await searchSubsidiary(originSubsidiaryId);
-            }
-            if (destinationAgencyId) {
-                destinationAgency = await searchAgency(destinationAgencyId);
-            }
-            if (destinationSubsidiaryId) {
-                destinationSubsidiary = await searchSubsidiary(destinationSubsidiaryId);
-            }
-            if (transportDriverId) {
-                transportDriver = await searchTransportDriver(transportDriverId);
-            }
-            if (transportKindId) {
-                transportKind = await searchTransportKind(transportKindId);
-            }
-            let fridges = await searchAllFridges(req.body['cabinets']);
+                let precedentPromises = [originAgency, destinationSubsidiary, transportDriver, transportKind, fridges, originSubsidiary, destinationAgency];
 
-            let precedentPromises = [originAgency, destinationSubsidiary, transportDriver, transportKind, fridges, originSubsidiary, destinationAgency];
+                Promise.all(precedentPromises)
+                    .then(async function () {
+                        let date = new Date();
 
-            Promise.all(precedentPromises)
-                .then(async function () {
-                    let date = new Date();
+                        // Create a change base object.
+                        change = {
+                            confirmado: false,
+                            descripcion_salida: req.body.descripcion,
+                            fecha_hora_salida: date,
+                            nombre_chofer: req.body.nombre_chofer,
+                            persona: req.body.persona,
+                            sucursal_origen: originSubsidiary,
+                            udn_origen: originAgency,
+                            sucursal_destino: destinationSubsidiary,
+                            udn_destino: destinationAgency,
+                            tipo_transporte: transportKind,
+                            operador_transporte: transportDriver,
+                            cabinets: fridges
+                        };
 
-                    // Create a change base object.
-                    change = {
-                        confirmado: false,
-                        descripcion_salida: req.body.descripcion,
-                        fecha_hora_salida: date,
-                        nombre_chofer: req.body.nombre_chofer,
-                        persona: req.body.persona,
-                        sucursal_origen: originSubsidiary,
-                        udn_origen: originAgency,
-                        sucursal_destino: destinationSubsidiary,
-                        udn_destino: destinationAgency,
-                        tipo_transporte: transportKind,
-                        operador_transporte: transportDriver,
-                        cabinets: fridges
-                    };
+                        let response = await writeChange();
+                        //await createAllControl(response.ops[0]);
+                        await updateFridges(change);
 
-                    let response = await writeChange();
-                    //await createAllControl(response.ops[0]);
-                    await updateFridges(change);
+                        context.res = {
+                            status: 200,
+                            body: response.ops[0],
+                            headers: {
+                                "Content-Type": "application/json"
+                            }
+                        }
+                        context.done();
+                    })
+                    .catch(function (error) {
+                        context.res = error;
+                        context.done();
+                    });
 
+            }
+            catch (error) {
+                if (error.status) {
+                    context.res = error;
+                }
+                else {
                     context.res = {
-                        status: 200,
-                        body: response.ops[0],
+                        status: 500,
+                        body: error,
                         headers: {
                             "Content-Type": "application/json"
                         }
                     }
-                    context.done();
-                })
-                .catch(function (error) {
-                    context.res = error;
-                    context.done();
-                });
-
-        }
-        catch (error) {
-            if (error.status) {
-                context.res = error;
-            }
-            else {
-                context.res = {
-                    status: 500,
-                    body: error,
-                    headers: {
-                        "Content-Type": "application/json"
-                    }
                 }
+                context.done();
             }
-            context.done();
         }
 
         //Internal functions
@@ -315,6 +315,7 @@ module.exports = function (context, req) {
                     }
                 };
                 context.done();
+                return false;
             }
 
             //Fridge array validation
@@ -329,6 +330,7 @@ module.exports = function (context, req) {
                     }
                 };
                 context.done();
+                return false;
             }
             if (req.body.cabinets.length === 0) {
                 context.res = {
@@ -341,6 +343,7 @@ module.exports = function (context, req) {
                     }
                 };
                 context.done();
+                return false;
             }
 
             //Transport driver validation
@@ -355,6 +358,7 @@ module.exports = function (context, req) {
                     }
                 };
                 context.done();
+                return false;
             }
             if (!req.body.nombre_chofer && !transportDriverId) {
                 context.res = {
@@ -367,8 +371,9 @@ module.exports = function (context, req) {
                     }
                 };
                 context.done();
+                return false;
             }
-
+            return true;
         }
         async function searchAgency(agencyId) {
             await createManagementClient();
