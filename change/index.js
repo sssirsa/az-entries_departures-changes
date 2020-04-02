@@ -113,6 +113,17 @@ module.exports = function (context, req) {
                 }
                 query['udn_origen._id'] = mongodb.ObjectId(req.query['udn_origen']);
             }
+            if (req.query['confirmado']) {
+                if (!query) {
+                    query = {};
+                }
+                if (req.query['confirmado'] === 'true') {
+                    query['confirmado'] = true;
+                }
+                if (req.query['confirmado'] === 'false') {
+                    query['confirmado'] = false;
+                }
+            }
         }
         if (requestedID) {
             //Get specific change
