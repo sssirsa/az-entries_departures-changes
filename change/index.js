@@ -140,7 +140,18 @@ module.exports = function (context, req) {
 
             }
             catch (error) {
-                context.res = error;
+                if (error.status) {
+                    context.res = error;
+                }
+                else {
+                    context.res = {
+                        status: 500,
+                        body: error.toString(),
+                        headers: {
+                            "Content-Type": "application/json"
+                        }
+                    }
+                }
                 context.done();
             }
         }
@@ -158,7 +169,18 @@ module.exports = function (context, req) {
                 context.done();
             }
             catch (error) {
-                context.res = error;
+                if (error.status) {
+                    context.res = error;
+                }
+                else {
+                    context.res = {
+                        status: 500,
+                        body: error.toString(),
+                        headers: {
+                            "Content-Type": "application/json"
+                        }
+                    }
+                }
                 context.done();
             }
         }
@@ -231,91 +253,90 @@ module.exports = function (context, req) {
         var transportDriverId = req.body['operador_transporte'];
         var transportKindId = req.body['tipo_transporte']; //Non mandatory
 
-        if (validate()) {
-            try {
-                let originAgency,
-                    originSubsidiary,
-                    destinationAgency,
-                    destinationSubsidiary,
-                    transportDriver,
-                    transportKind;
-                if (originAgencyId) {
-                    originAgency = await searchAgency(originAgencyId);
-                }
-                if (originSubsidiaryId) {
-                    originSubsidiary = await searchSubsidiary(originSubsidiaryId);
-                }
-                if (destinationAgencyId) {
-                    destinationAgency = await searchAgency(destinationAgencyId);
-                }
-                if (destinationSubsidiaryId) {
-                    destinationSubsidiary = await searchSubsidiary(destinationSubsidiaryId);
-                }
-                if (transportDriverId) {
-                    transportDriver = await searchTransportDriver(transportDriverId);
-                }
-                if (transportKindId) {
-                    transportKind = await searchTransportKind(transportKindId);
-                }
-                let fridges = await searchAllFridges(req.body['cabinets']);
-
-                let precedentPromises = [originAgency, destinationSubsidiary, transportDriver, transportKind, fridges, originSubsidiary, destinationAgency];
-
-                Promise.all(precedentPromises)
-                    .then(async function () {
-                        let date = new Date();
-
-                        // Create a change base object.
-                        change = {
-                            confirmado: false,
-                            descripcion_salida: req.body.descripcion,
-                            fecha_hora_salida: date,
-                            nombre_chofer: req.body.nombre_chofer,
-                            persona: req.body.persona,
-                            sucursal_origen: originSubsidiary,
-                            udn_origen: originAgency,
-                            sucursal_destino: destinationSubsidiary,
-                            udn_destino: destinationAgency,
-                            tipo_transporte: transportKind,
-                            operador_transporte: transportDriver,
-                            cabinets: fridges
-                        };
-
-                        let response = await writeChange();
-                        //await createAllControl(response.ops[0]);
-                        await updateFridges(change);
-
-                        context.res = {
-                            status: 201,
-                            body: response.ops[0],
-                            headers: {
-                                "Content-Type": "application/json"
-                            }
-                        }
-                        context.done();
-                    })
-                    .catch(function (error) {
-                        context.res = error;
-                        context.done();
-                    });
-
+        try {
+            validate();
+            let originAgency,
+                originSubsidiary,
+                destinationAgency,
+                destinationSubsidiary,
+                transportDriver,
+                transportKind;
+            if (originAgencyId) {
+                originAgency = await searchAgency(originAgencyId);
             }
-            catch (error) {
-                if (error.status) {
-                    context.res = error;
-                }
-                else {
+            if (originSubsidiaryId) {
+                originSubsidiary = await searchSubsidiary(originSubsidiaryId);
+            }
+            if (destinationAgencyId) {
+                destinationAgency = await searchAgency(destinationAgencyId);
+            }
+            if (destinationSubsidiaryId) {
+                destinationSubsidiary = await searchSubsidiary(destinationSubsidiaryId);
+            }
+            if (transportDriverId) {
+                transportDriver = await searchTransportDriver(transportDriverId);
+            }
+            if (transportKindId) {
+                transportKind = await searchTransportKind(transportKindId);
+            }
+            let fridges = await searchAllFridges(req.body['cabinets']);
+
+            let precedentPromises = [originAgency, destinationSubsidiary, transportDriver, transportKind, fridges, originSubsidiary, destinationAgency];
+
+            Promise.all(precedentPromises)
+                .then(async function () {
+                    let date = new Date();
+
+                    // Create a change base object.
+                    change = {
+                        confirmado: false,
+                        descripcion_salida: req.body.descripcion,
+                        fecha_hora_salida: date,
+                        nombre_chofer: req.body.nombre_chofer,
+                        persona: req.body.persona,
+                        sucursal_origen: originSubsidiary,
+                        udn_origen: originAgency,
+                        sucursal_destino: destinationSubsidiary,
+                        udn_destino: destinationAgency,
+                        tipo_transporte: transportKind,
+                        operador_transporte: transportDriver,
+                        cabinets: fridges
+                    };
+
+                    let response = await writeChange();
+                    //await createAllControl(response.ops[0]);
+                    await updateFridges(change);
+
                     context.res = {
-                        status: 500,
-                        body: error,
+                        status: 201,
+                        body: response.ops[0],
                         headers: {
                             "Content-Type": "application/json"
                         }
                     }
-                }
-                context.done();
-            }
+                    context.done();
+                })
+                .catch(function (error) {
+                    throw error;
+                });
+
         }
+        catch (error) {
+            if (error.status) {
+                context.res = error;
+            }
+            else {
+                context.res = {
+                    status: 500,
+                    body: error.toString(),
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                }
+            }
+            context.done();
+        }
+
 
         //Internal functions
         function validate() {
@@ -327,7 +348,7 @@ module.exports = function (context, req) {
                 )
             ) {
                 //at least one
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-066'
@@ -336,13 +357,11 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
-                return false;
             }
 
             //Fridge array validation
             if (!req.body.cabinets) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-003'
@@ -351,11 +370,9 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
-                return false;
             }
             if (req.body.cabinets.length === 0) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-003'
@@ -364,13 +381,11 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
-                return false;
             }
 
             //Transport driver validation
             if (req.body.nombre_chofer && transportDriverId) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-047'
@@ -379,11 +394,9 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
-                return false;
             }
             if (!req.body.nombre_chofer && !transportDriverId) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-048'
@@ -392,15 +405,12 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
-                return false;
             }
-            return true;
         }
         async function searchAgency(agencyId) {
-            await createManagementClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createManagementClient();
                     management_client
                         .db(MANAGEMENT_DB_NAME)
                         .collection('agencies')
@@ -409,12 +419,11 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
                                 if (!docs) {
                                     reject({
@@ -432,14 +441,13 @@ module.exports = function (context, req) {
                         );
                 }
                 catch (error) {
-                    context.log(error);
                     reject({
                         status: 500,
                         body: error.toString(),
                         headers: {
                             "Content-Type": "application/json"
                         }
-                    })
+                    });
                 }
             });
         }
@@ -464,8 +472,8 @@ module.exports = function (context, req) {
             });
         }
         async function searchFridge(fridgeInventoryNumber) {
-            await createManagementClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
+                await createManagementClient();
                 try {
                     management_client
                         .db(MANAGEMENT_DB_NAME)
@@ -475,12 +483,11 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
 
                                 //Validations
@@ -495,7 +502,6 @@ module.exports = function (context, req) {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
                                 if (docs['establecimiento']) {
                                     //Fridge is in a store
@@ -509,7 +515,6 @@ module.exports = function (context, req) {
                                         }
                                     };
                                     reject(err);
-                                    return;
                                 }
                                 if (docs['sucursal'] || docs['udn']) {
                                     if (docs['sucursal']) {
@@ -524,7 +529,6 @@ module.exports = function (context, req) {
                                                 }
                                             };
                                             reject(err);
-                                            return;
                                         }
                                     }
                                     if (docs['udn']) {
@@ -539,7 +543,6 @@ module.exports = function (context, req) {
                                                 }
                                             };
                                             reject(err);
-                                            return;
                                         }
                                     }
                                 }
@@ -549,7 +552,6 @@ module.exports = function (context, req) {
                         );
                 }
                 catch (error) {
-                    context.log(error);
                     reject({
                         status: 500,
                         body: error.toString(),
@@ -572,12 +574,11 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
                                 if (!docs) {
                                     reject({
@@ -595,7 +596,6 @@ module.exports = function (context, req) {
                         );
                 }
                 catch (error) {
-                    context.log(error);
                     reject({
                         status: 500,
                         body: error.toString(),
@@ -621,14 +621,13 @@ module.exports = function (context, req) {
                                 'Content-Type': 'application / json'
                             }
                         });
-                        return;
                     }
                     resolve(transportDriver.data);
                 }
                 catch (error) {
                     reject({
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             "Content-Type": "application/json"
                         }
@@ -651,14 +650,13 @@ module.exports = function (context, req) {
                                 'Content-Type': 'application / json'
                             }
                         });
-                        return;
                     }
                     resolve(transportKind.data);
                 }
                 catch (error) {
                     reject({
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             "Content-Type": "application/json"
                         }
@@ -667,56 +665,10 @@ module.exports = function (context, req) {
             });
 
         }
-        // async function searchUnileverStatus(code) {
-        //     await createManagementClient();
-        //     return new Promise(function (resolve, reject) {
-        //         try {
-        //             management_client
-        //                 .db(MANAGEMENT_DB_NAME)
-        //                 .collection('unilevers')
-        //                 .findOne({ code: code },
-        //                     function (error, docs) {
-        //                         if (error) {
-        //                             reject({
-        //                                 status: 500,
-        //                                 body: error.toString(),
-        //                                 headers: {
-        //                                     'Content-Type': 'application / json'
-        //                                 }
-        //                             });
-        //                             return;
-        //                         }
-        //                         if (!docs) {
-        //                             reject({
-        //                                 status: 400,
-        //                                 body: {
-        //                                     message: 'MG-016'
-        //                                 },
-        //                                 headers: {
-        //                                     'Content-Type': 'application / json'
-        //                                 }
-        //                             });
-        //                         }
-        //                         resolve(docs);
-        //                     }
-        //                 );
-        //         }
-        //         catch (error) {
-        //             context.log(error);
-        //             reject({
-        //                 status: 500,
-        //                 body: error.toString(),
-        //                 headers: {
-        //                     "Content-Type": "application/json"
-        //                 }
-        //             })
-        //         }
-        //     });
-        // }
         async function writeChange() {
-            await createEntriesDeparturesClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createEntriesDeparturesClient();
                     entries_departures_client
                         .db(ENTRIES_DEPARTURES_DB_NAME)
                         .collection('Changes')
@@ -724,7 +676,7 @@ module.exports = function (context, req) {
                             if (error) {
                                 reject({
                                     status: 500,
-                                    body: error,
+                                    body: error.toString(),
                                     headers: {
                                         'Content-Type': 'application / json'
                                     }
@@ -735,13 +687,13 @@ module.exports = function (context, req) {
                         });
                 }
                 catch (error) {
-                    reject({
+                    throw {
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             'Content-Type': 'application / json'
                         }
-                    });
+                    };
                 }
             });
         }
@@ -770,20 +722,14 @@ module.exports = function (context, req) {
                     resolve(updatedFridgesArray);
                 }
                 catch (error) {
-                    reject({
-                        status: 500,
-                        body: error,
-                        headers: {
-                            'Content-Type': 'application / json'
-                        }
-                    });
+                    reject(error);
                 }
             });
         }
         async function updateFridge(newValues, fridgeId) {
-            await createManagementClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createManagementClient();
                     management_client
                         .db(MANAGEMENT_DB_NAME)
                         .collection('fridges')
@@ -794,7 +740,7 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
@@ -806,90 +752,87 @@ module.exports = function (context, req) {
                         );
                 }
                 catch (error) {
-                    reject({
-
+                    throw {
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             'Content-Type': 'application / json'
                         }
-                    });
+                    };
                 }
             });
         }
     }
 
     async function PUT_change() {
-        let valid = validate();
-        if (valid) {
+        try {
+            validate();
             //TODO: Get person data trough userid and save it in the change data
             var change; //Base object
             var userId = null;
             var changeId = req.query['id'];
-            try {
-                change = await getChange(changeId);
-                let fridges = await searchAllFridges(req.body['cabinets']);
+            change = await getChange(changeId);
+            let fridges = await searchAllFridges(req.body['cabinets']);
 
-                let precedentPromises = [change, fridges];
+            let precedentPromises = [change, fridges];
 
-                Promise.all(precedentPromises)
-                    .then(async function () {
-                        validateDestination();
-                        validateUnconfirmedChange();
-                        let date = new Date();
-                        let excedentFridges = getExcedentFridges(fridges, change.cabinets);
-                        let missingFridges = getMissingFridges(fridges, change.cabinets);
-                        // Create a change base object.
-                        newValues = {
-                            confirmado: true,
-                            descripcion_entrada: req.body.descripcion,
-                            fecha_hora_entrada: date,
-                            persona: req.body.persona,
-                            cabinets: fridges,
-                            cabinets_excedentes: excedentFridges,
-                            cabinets_faltantes: missingFridges
-                        };
+            Promise.all(precedentPromises)
+                .then(async function () {
+                    validateDestination();
+                    validateUnconfirmedChange();
+                    let date = new Date();
+                    let excedentFridges = getExcedentFridges(fridges, change.cabinets);
+                    let missingFridges = getMissingFridges(fridges, change.cabinets);
+                    // Create a change base object.
+                    newValues = {
+                        confirmado: true,
+                        descripcion_entrada: req.body.descripcion,
+                        fecha_hora_entrada: date,
+                        persona: req.body.persona,
+                        cabinets: fridges,
+                        cabinets_excedentes: excedentFridges,
+                        cabinets_faltantes: missingFridges
+                    };
 
-                        await updateChange(newValues, change['_id']);
-                        await updateFridges(change);
-                        let response = await getChange(changeId);
-                        context.res = {
-                            status: 200,
-                            body: response,
-                            headers: {
-                                "Content-Type": "application/json"
-                            }
-                        }
-                        context.done();
-                    })
-                    .catch(function (error) {
-                        context.res = error;
-                        context.done();
-                    });
-
-            }
-            catch (error) {
-                if (error.status) {
-                    context.res = error;
-                }
-                else {
+                    await updateChange(newValues, change['_id']);
+                    await updateFridges(change);
+                    let response = await getChange(changeId);
                     context.res = {
-                        status: 500,
-                        body: error,
+                        status: 200,
+                        body: response,
                         headers: {
                             "Content-Type": "application/json"
                         }
                     }
-                }
-                context.done();
-            }
+                    context.done();
+                })
+                .catch(function (error) {
+                    throw error;
+                });
+
         }
+        catch (error) {
+            if (error.status) {
+                context.res = error;
+            }
+            else {
+                context.res = {
+                    status: 500,
+                    body: error.toString(),
+                    headers: {
+                        "Content-Type": "application/json"
+                    }
+                }
+            }
+            context.done();
+        }
+
 
         //Internal functions
         function validate() {
             //No id was provided
             if (!req.query) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-069'
@@ -898,11 +841,9 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
-                return false;
             }
             if (!req.query['id']) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-069'
@@ -911,12 +852,10 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
-                return false;
             }
             //Fridge array validation
             if (!req.body.cabinets) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-003'
@@ -925,11 +864,9 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
-                return false;
             }
             if (req.body.cabinets.length === 0) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-003'
@@ -938,16 +875,13 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
-                return false;
             }
-            return true;
         }
         function validateDestination() {
             //Destination validation
             if (change['sucursal_destino']) {
                 if (change['sucursal_destino']._id.toString() !== req.body['sucursal_destino']) {
-                    context.res = {
+                    throw {
                         status: 400,
                         body: {
                             message: 'ES-067'
@@ -956,13 +890,11 @@ module.exports = function (context, req) {
                             'Content-Type': 'application / json'
                         }
                     };
-                    context.done();
-                    return;
                 }
             }
             if (change['udn_destino']) {
                 if (change['udn_destino']._id.toString() !== req.body['udn_destino']) {
-                    context.res = {
+                    throw {
                         status: 400,
                         body: {
                             message: 'ES-068'
@@ -971,14 +903,12 @@ module.exports = function (context, req) {
                             'Content-Type': 'application / json'
                         }
                     };
-                    context.done();
-                    return;
                 }
             }
         }
-        function validateUnconfirmedChange(){
-            if(change.confirmado){
-                context.res = {
+        function validateUnconfirmedChange() {
+            if (change.confirmado) {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-070'
@@ -987,8 +917,6 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
-                return;
             }
         }
         function searchAllFridges(fridgesId) {
@@ -1012,9 +940,9 @@ module.exports = function (context, req) {
             });
         }
         async function searchFridge(fridgeInventoryNumber) {
-            await createManagementClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createManagementClient();
                     management_client
                         .db(MANAGEMENT_DB_NAME)
                         .collection('fridges')
@@ -1023,12 +951,12 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
+                                    //return;
                                 }
 
                                 //Validations
@@ -1043,7 +971,7 @@ module.exports = function (context, req) {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
+                                    //return;
                                 }
                                 //Resolve correctly if all validations are passed        
                                 resolve(docs);
@@ -1051,7 +979,6 @@ module.exports = function (context, req) {
                         );
                 }
                 catch (error) {
-                    context.log(error);
                     reject({
                         status: 500,
                         body: error.toString(),
@@ -1063,9 +990,9 @@ module.exports = function (context, req) {
             });
         }
         async function updateChange(newValues, changeId) {
-            await createEntriesDeparturesClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createEntriesDeparturesClient();
                     management_client
                         .db(ENTRIES_DEPARTURES_DB_NAME)
                         .collection('Changes')
@@ -1076,12 +1003,11 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
                                 resolve(docs);
                             }
@@ -1089,9 +1015,8 @@ module.exports = function (context, req) {
                 }
                 catch (error) {
                     reject({
-
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             'Content-Type': 'application / json'
                         }
@@ -1130,20 +1055,14 @@ module.exports = function (context, req) {
                     resolve(updatedFridgesArray);
                 }
                 catch (error) {
-                    reject({
-                        status: 500,
-                        body: error,
-                        headers: {
-                            'Content-Type': 'application / json'
-                        }
-                    });
+                    reject(error);
                 }
             });
         }
         async function updateFridge(newValues, fridgeId) {
-            await createManagementClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createManagementClient();
                     management_client
                         .db(MANAGEMENT_DB_NAME)
                         .collection('fridges')
@@ -1154,12 +1073,11 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
                                 resolve(docs);
                             }
@@ -1167,9 +1085,8 @@ module.exports = function (context, req) {
                 }
                 catch (error) {
                     reject({
-
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             'Content-Type': 'application / json'
                         }
@@ -1178,36 +1095,47 @@ module.exports = function (context, req) {
             });
         }
         async function getChange(changeId) {
-            await createEntriesDeparturesClient();
-            return new Promise(function (resolve, reject) {
-                entries_departures_client
-                    .db(ENTRIES_DEPARTURES_DB_NAME)
-                    .collection('Changes')
-                    .findOne({ _id: mongodb.ObjectId(changeId) },
-                        function (error, docs) {
-                            if (error) {
-                                reject({
-                                    status: 500,
-                                    body: error.toString(),
-                                    headers: {
-                                        'Content-Type': 'application/json'
-                                    }
-                                });
+            return new Promise(async function (resolve, reject) {
+                try {
+                    await createEntriesDeparturesClient();
+                    entries_departures_client
+                        .db(ENTRIES_DEPARTURES_DB_NAME)
+                        .collection('Changes')
+                        .findOne({ _id: mongodb.ObjectId(changeId) },
+                            function (error, docs) {
+                                if (error) {
+                                    reject({
+                                        status: 500,
+                                        body: error.toString(),
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        }
+                                    });
+                                }
+                                if (docs) {
+                                    resolve(docs);
+                                }
+                                else {
+                                    reject({
+                                        status: 404,
+                                        body: {},
+                                        headers: {
+                                            "Content-Type": "application/json"
+                                        }
+                                    });
+                                }
                             }
-                            if (docs) {
-                                resolve(docs);
-                            }
-                            else {
-                                reject({
-                                    status: 404,
-                                    body: {},
-                                    headers: {
-                                        "Content-Type": "application/json"
-                                    }
-                                });
-                            }
+                        );
+                }
+                catch (error) {
+                    reject({
+                        status: 500,
+                        body: error.toString(),
+                        headers: {
+                            'Content-Type': 'application / json'
                         }
-                    );
+                    });
+                }
             });
         }
         function getExcedentFridges(fridges, sentFridges) {
