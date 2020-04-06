@@ -42,6 +42,8 @@ module.exports = function (context, req) {
         var requestedID;
         //var requestedKind;
         var query;
+        var fecha_hora_entrada;
+        var fecha_hora_salida;
         //Adding filters
         if (req.query) {
             requestedID = req.query['id'];
@@ -55,39 +57,37 @@ module.exports = function (context, req) {
                 if (!query) {
                     query = {};
                 }
-                var fecha_hora;
                 if (req.query['fecha_inicio_entrada']) {
-                    if (!fecha_hora) {
-                        fecha_hora = {};
+                    if (!fecha_hora_entrada) {
+                        fecha_hora_entrada = {};
                     }
-                    fecha_hora['$gte'] = new Date(new Date(req.query['fecha_inicio_entrada']).setHours(00, 00, 00));
+                    fecha_hora_entrada['$gte'] = new Date(new Date(req.query['fecha_inicio_entrada']).setHours(00, 00, 00));
                 }
                 if (req.query['fecha_fin_entrada']) {
-                    if (!fecha_hora) {
-                        fecha_hora = {};
+                    if (!fecha_hora_entrada) {
+                        fecha_hora_entrada = {};
                     }
-                    fecha_hora['$lte'] = new Date(new Date(req.query['fecha_fin_entrada']).setHours(23, 59, 59));
+                    fecha_hora_entrada['$lte'] = new Date(new Date(req.query['fecha_fin_entrada']).setHours(23, 59, 59));
                 }
-                query['fecha_hora_entrada'] = fecha_hora;
+                query['fecha_hora_entrada'] = fecha_hora_entrada;
             }
             if (req.query['fecha_inicio_salida'] || req.query['fecha_fin_salida']) {
                 if (!query) {
                     query = {};
                 }
-                var fecha_hora;
                 if (req.query['fecha_inicio_salida']) {
-                    if (!fecha_hora) {
-                        fecha_hora = {};
+                    if (!fecha_hora_salida) {
+                        fecha_hora_salida = {};
                     }
-                    fecha_hora['$gte'] = new Date(new Date(req.query['fecha_inicio_salida']).setHours(00, 00, 00));
+                    fecha_hora_salida['$gte'] = new Date(new Date(req.query['fecha_inicio_salida']).setHours(00, 00, 00));
                 }
                 if (req.query['fecha_fin_salida']) {
-                    if (!fecha_hora) {
-                        fecha_hora = {};
+                    if (!fecha_hora_salida) {
+                        fecha_hora_salida = {};
                     }
-                    fecha_hora['$lte'] = new Date(new Date(req.query['fecha_fin_salida']).setHours(23, 59, 59));
+                    fecha_hora_salida['$lte'] = new Date(new Date(req.query['fecha_fin_salida']).setHours(23, 59, 59));
                 }
-                query['fecha_hora_salida'] = fecha_hora;
+                query['fecha_hora_salida'] = fecha_hora_salida;
             }
             if (req.query['sucursal_destino']) {
                 if (!query) {
@@ -179,7 +179,18 @@ module.exports = function (context, req) {
                                     }
                                 });
                             }
-                            resolve(docs);
+                            if (docs) {
+                                resolve(docs);
+                            }
+                            else {
+                                reject({
+                                    status: 404,
+                                    body: {},
+                                    headers: {
+                                        "Content-Type": "application/json"
+                                    }
+                                });
+                            }
                         }
                     );
             });
@@ -275,7 +286,7 @@ module.exports = function (context, req) {
                         await updateFridges(change);
 
                         context.res = {
-                            status: 200,
+                            status: 201,
                             body: response.ops[0],
                             headers: {
                                 "Content-Type": "application/json"
@@ -809,70 +820,69 @@ module.exports = function (context, req) {
     }
 
     async function PUT_change() {
-
-        validate();
-        //TODO: Get person data trough userid and save it in the change data
-        let change; //Base object
-        var userId = null;
-        var changeId = req.query['id'];
-
-        try {
-            if (changeId) {
+        let valid = validate();
+        if (valid) {
+            //TODO: Get person data trough userid and save it in the change data
+            var change; //Base object
+            var userId = null;
+            var changeId = req.query['id'];
+            try {
                 change = await getChange(changeId);
+                let fridges = await searchAllFridges(req.body['cabinets']);
+
+                let precedentPromises = [change, fridges];
+
+                Promise.all(precedentPromises)
+                    .then(async function () {
+                        validateDestination();
+                        validateUnconfirmedChange();
+                        let date = new Date();
+                        let excedentFridges = getExcedentFridges(fridges, change.cabinets);
+                        let missingFridges = getMissingFridges(fridges, change.cabinets);
+                        // Create a change base object.
+                        newValues = {
+                            confirmado: true,
+                            descripcion_entrada: req.body.descripcion,
+                            fecha_hora_entrada: date,
+                            persona: req.body.persona,
+                            cabinets: fridges,
+                            cabinets_excedentes: excedentFridges,
+                            cabinets_faltantes: missingFridges
+                        };
+
+                        await updateChange(newValues, change['_id']);
+                        await updateFridges(change);
+                        let response = await getChange(changeId);
+                        context.res = {
+                            status: 200,
+                            body: response,
+                            headers: {
+                                "Content-Type": "application/json"
+                            }
+                        }
+                        context.done();
+                    })
+                    .catch(function (error) {
+                        context.res = error;
+                        context.done();
+                    });
+
             }
-            let fridges = await searchAllFridges(req.body['cabinets']);
-
-            let precedentPromises = [change, fridges];
-
-            Promise.all(precedentPromises)
-                .then(async function () {
-                    validateDestination();
-                    let date = new Date();
-                    let excedentFridges = getExcedentFridges(fridges, change.cabinets);
-                    let missingFridges = getMissingFridges(fridges, change.cabinets);
-                    // Create a change base object.
-                    newValues = {
-                        confirmado: true,
-                        descripcion_entrada: req.body.descripcion,
-                        fecha_hora_entrada: date,
-                        persona: req.body.persona,
-                        cabinets: fridges,
-                        cabinets_excedentes: excedentFridges,
-                        cabinets_faltantes: missingFridges
-                    };
-
-                    let response = await updateChange(newValues, change['_id']);
-                    await updateFridges(change);
-
+            catch (error) {
+                if (error.status) {
+                    context.res = error;
+                }
+                else {
                     context.res = {
-                        status: 200,
-                        body: change,
+                        status: 500,
+                        body: error,
                         headers: {
                             "Content-Type": "application/json"
                         }
                     }
-                    context.done();
-                })
-                .catch(function (error) {
-                    context.res = error;
-                    context.done();
-                });
-
-        }
-        catch (error) {
-            if (error.status) {
-                context.res = error;
-            }
-            else {
-                context.res = {
-                    status: 500,
-                    body: error,
-                    headers: {
-                        "Content-Type": "application/json"
-                    }
                 }
+                context.done();
             }
-            context.done();
         }
 
         //Internal functions
@@ -889,6 +899,7 @@ module.exports = function (context, req) {
                     }
                 };
                 context.done();
+                return false;
             }
             if (!req.query['id']) {
                 context.res = {
@@ -901,6 +912,7 @@ module.exports = function (context, req) {
                     }
                 };
                 context.done();
+                return false;
             }
             //Fridge array validation
             if (!req.body.cabinets) {
@@ -914,6 +926,7 @@ module.exports = function (context, req) {
                     }
                 };
                 context.done();
+                return false;
             }
             if (req.body.cabinets.length === 0) {
                 context.res = {
@@ -926,8 +939,9 @@ module.exports = function (context, req) {
                     }
                 };
                 context.done();
+                return false;
             }
-
+            return true;
         }
         function validateDestination() {
             //Destination validation
@@ -960,6 +974,21 @@ module.exports = function (context, req) {
                     context.done();
                     return;
                 }
+            }
+        }
+        function validateUnconfirmedChange(){
+            if(change.confirmado){
+                context.res = {
+                    status: 400,
+                    body: {
+                        message: 'ES-070'
+                    },
+                    headers: {
+                        'Content-Type': 'application / json'
+                    }
+                };
+                context.done();
+                return;
             }
         }
         function searchAllFridges(fridgesId) {
@@ -1015,50 +1044,6 @@ module.exports = function (context, req) {
                                         }
                                     });
                                     return;
-                                }
-                                if (docs['establecimiento']) {
-                                    //Fridge is in a store
-                                    err = {
-                                        status: 400,
-                                        body: {
-                                            message: 'ES-005'
-                                        },
-                                        headers: {
-                                            'Content-Type': 'application / json'
-                                        }
-                                    };
-                                    reject(err);
-                                    return;
-                                }
-                                if (docs['sucursal'] || docs['udn']) {
-                                    if (docs['sucursal']) {
-                                        if (docs['sucursal']._id !== originSubsidiaryId) {
-                                            err = {
-                                                status: 400,
-                                                body: {
-                                                    message: 'ES-021'
-                                                },
-                                                headers: {
-                                                    'Content-Type': 'application / json'
-                                                }
-                                            };
-                                            reject(err);
-                                            return;
-                                        }
-                                        if (docs['udn']._id !== originAgencyId) {
-                                            err = {
-                                                status: 400,
-                                                body: {
-                                                    message: 'ES-022'
-                                                },
-                                                headers: {
-                                                    'Content-Type': 'application / json'
-                                                }
-                                            };
-                                            reject(err);
-                                            return;
-                                        }
-                                    }
                                 }
                                 //Resolve correctly if all validations are passed        
                                 resolve(docs);
@@ -1209,7 +1194,18 @@ module.exports = function (context, req) {
                                     }
                                 });
                             }
-                            resolve(docs);
+                            if (docs) {
+                                resolve(docs);
+                            }
+                            else {
+                                reject({
+                                    status: 404,
+                                    body: {},
+                                    headers: {
+                                        "Content-Type": "application/json"
+                                    }
+                                });
+                            }
                         }
                     );
             });
