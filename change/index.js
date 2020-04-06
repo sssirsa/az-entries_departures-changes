@@ -42,6 +42,8 @@ module.exports = function (context, req) {
         var requestedID;
         //var requestedKind;
         var query;
+        var fecha_hora_entrada;
+        var fecha_hora_salida;
         //Adding filters
         if (req.query) {
             requestedID = req.query['id'];
@@ -55,39 +57,37 @@ module.exports = function (context, req) {
                 if (!query) {
                     query = {};
                 }
-                var fecha_hora;
                 if (req.query['fecha_inicio_entrada']) {
-                    if (!fecha_hora) {
-                        fecha_hora = {};
+                    if (!fecha_hora_entrada) {
+                        fecha_hora_entrada = {};
                     }
-                    fecha_hora['$gte'] = new Date(new Date(req.query['fecha_inicio_entrada']).setHours(00, 00, 00));
+                    fecha_hora_entrada['$gte'] = new Date(new Date(req.query['fecha_inicio_entrada']).setHours(00, 00, 00));
                 }
                 if (req.query['fecha_fin_entrada']) {
-                    if (!fecha_hora) {
-                        fecha_hora = {};
+                    if (!fecha_hora_entrada) {
+                        fecha_hora_entrada = {};
                     }
-                    fecha_hora['$lte'] = new Date(new Date(req.query['fecha_fin_entrada']).setHours(23, 59, 59));
+                    fecha_hora_entrada['$lte'] = new Date(new Date(req.query['fecha_fin_entrada']).setHours(23, 59, 59));
                 }
-                query['fecha_hora_entrada'] = fecha_hora;
+                query['fecha_hora_entrada'] = fecha_hora_entrada;
             }
             if (req.query['fecha_inicio_salida'] || req.query['fecha_fin_salida']) {
                 if (!query) {
                     query = {};
                 }
-                var fecha_hora;
                 if (req.query['fecha_inicio_salida']) {
-                    if (!fecha_hora) {
-                        fecha_hora = {};
+                    if (!fecha_hora_salida) {
+                        fecha_hora_salida = {};
                     }
-                    fecha_hora['$gte'] = new Date(new Date(req.query['fecha_inicio_salida']).setHours(00, 00, 00));
+                    fecha_hora_salida['$gte'] = new Date(new Date(req.query['fecha_inicio_salida']).setHours(00, 00, 00));
                 }
                 if (req.query['fecha_fin_salida']) {
-                    if (!fecha_hora) {
-                        fecha_hora = {};
+                    if (!fecha_hora_salida) {
+                        fecha_hora_salida = {};
                     }
-                    fecha_hora['$lte'] = new Date(new Date(req.query['fecha_fin_salida']).setHours(23, 59, 59));
+                    fecha_hora_salida['$lte'] = new Date(new Date(req.query['fecha_fin_salida']).setHours(23, 59, 59));
                 }
-                query['fecha_hora_salida'] = fecha_hora;
+                query['fecha_hora_salida'] = fecha_hora_salida;
             }
             if (req.query['sucursal_destino']) {
                 if (!query) {
@@ -113,6 +113,17 @@ module.exports = function (context, req) {
                 }
                 query['udn_origen._id'] = mongodb.ObjectId(req.query['udn_origen']);
             }
+            if (req.query['confirmado']) {
+                if (!query) {
+                    query = {};
+                }
+                if (req.query['confirmado'] === 'true') {
+                    query['confirmado'] = true;
+                }
+                if (req.query['confirmado'] === 'false') {
+                    query['confirmado'] = false;
+                }
+            }
         }
         if (requestedID) {
             //Get specific change
@@ -129,7 +140,18 @@ module.exports = function (context, req) {
 
             }
             catch (error) {
-                context.res = error;
+                if (error.status) {
+                    context.res = error;
+                }
+                else {
+                    context.res = {
+                        status: 500,
+                        body: error.toString(),
+                        headers: {
+                            "Content-Type": "application/json"
+                        }
+                    }
+                }
                 context.done();
             }
         }
@@ -147,7 +169,18 @@ module.exports = function (context, req) {
                 context.done();
             }
             catch (error) {
-                context.res = error;
+                if (error.status) {
+                    context.res = error;
+                }
+                else {
+                    context.res = {
+                        status: 500,
+                        body: error.toString(),
+                        headers: {
+                            "Content-Type": "application/json"
+                        }
+                    }
+                }
                 context.done();
             }
         }
@@ -168,7 +201,18 @@ module.exports = function (context, req) {
                                     }
                                 });
                             }
-                            resolve(docs);
+                            if (docs) {
+                                resolve(docs);
+                            }
+                            else {
+                                reject({
+                                    status: 404,
+                                    body: {},
+                                    headers: {
+                                        "Content-Type": "application/json"
+                                    }
+                                });
+                            }
                         }
                     );
             });
@@ -209,9 +253,8 @@ module.exports = function (context, req) {
         var transportDriverId = req.body['operador_transporte'];
         var transportKindId = req.body['tipo_transporte']; //Non mandatory
 
-        validate();
-
         try {
+            validate();
             let originAgency,
                 originSubsidiary,
                 destinationAgency,
@@ -265,7 +308,7 @@ module.exports = function (context, req) {
                     await updateFridges(change);
 
                     context.res = {
-                        status: 200,
+                        status: 201,
                         body: response.ops[0],
                         headers: {
                             "Content-Type": "application/json"
@@ -274,8 +317,7 @@ module.exports = function (context, req) {
                     context.done();
                 })
                 .catch(function (error) {
-                    context.res = error;
-                    context.done();
+                    throw error;
                 });
 
         }
@@ -286,7 +328,7 @@ module.exports = function (context, req) {
             else {
                 context.res = {
                     status: 500,
-                    body: error,
+                    body: error.toString(),
                     headers: {
                         "Content-Type": "application/json"
                     }
@@ -294,6 +336,7 @@ module.exports = function (context, req) {
             }
             context.done();
         }
+
 
         //Internal functions
         function validate() {
@@ -305,7 +348,7 @@ module.exports = function (context, req) {
                 )
             ) {
                 //at least one
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-066'
@@ -314,12 +357,11 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
             }
 
             //Fridge array validation
             if (!req.body.cabinets) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-003'
@@ -328,10 +370,9 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
             }
             if (req.body.cabinets.length === 0) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-003'
@@ -340,12 +381,11 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
             }
 
             //Transport driver validation
             if (req.body.nombre_chofer && transportDriverId) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-047'
@@ -354,10 +394,9 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
             }
             if (!req.body.nombre_chofer && !transportDriverId) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-048'
@@ -366,14 +405,12 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
             }
-
         }
         async function searchAgency(agencyId) {
-            await createManagementClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createManagementClient();
                     management_client
                         .db(MANAGEMENT_DB_NAME)
                         .collection('agencies')
@@ -382,12 +419,11 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
                                 if (!docs) {
                                     reject({
@@ -405,14 +441,13 @@ module.exports = function (context, req) {
                         );
                 }
                 catch (error) {
-                    context.log(error);
                     reject({
                         status: 500,
                         body: error.toString(),
                         headers: {
                             "Content-Type": "application/json"
                         }
-                    })
+                    });
                 }
             });
         }
@@ -437,8 +472,8 @@ module.exports = function (context, req) {
             });
         }
         async function searchFridge(fridgeInventoryNumber) {
-            await createManagementClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
+                await createManagementClient();
                 try {
                     management_client
                         .db(MANAGEMENT_DB_NAME)
@@ -448,12 +483,11 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
 
                                 //Validations
@@ -468,7 +502,6 @@ module.exports = function (context, req) {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
                                 if (docs['establecimiento']) {
                                     //Fridge is in a store
@@ -482,7 +515,6 @@ module.exports = function (context, req) {
                                         }
                                     };
                                     reject(err);
-                                    return;
                                 }
                                 if (docs['sucursal'] || docs['udn']) {
                                     if (docs['sucursal']) {
@@ -497,7 +529,6 @@ module.exports = function (context, req) {
                                                 }
                                             };
                                             reject(err);
-                                            return;
                                         }
                                     }
                                     if (docs['udn']) {
@@ -512,7 +543,6 @@ module.exports = function (context, req) {
                                                 }
                                             };
                                             reject(err);
-                                            return;
                                         }
                                     }
                                 }
@@ -522,7 +552,6 @@ module.exports = function (context, req) {
                         );
                 }
                 catch (error) {
-                    context.log(error);
                     reject({
                         status: 500,
                         body: error.toString(),
@@ -545,12 +574,11 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
                                 if (!docs) {
                                     reject({
@@ -568,7 +596,6 @@ module.exports = function (context, req) {
                         );
                 }
                 catch (error) {
-                    context.log(error);
                     reject({
                         status: 500,
                         body: error.toString(),
@@ -594,14 +621,13 @@ module.exports = function (context, req) {
                                 'Content-Type': 'application / json'
                             }
                         });
-                        return;
                     }
                     resolve(transportDriver.data);
                 }
                 catch (error) {
                     reject({
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             "Content-Type": "application/json"
                         }
@@ -624,14 +650,13 @@ module.exports = function (context, req) {
                                 'Content-Type': 'application / json'
                             }
                         });
-                        return;
                     }
                     resolve(transportKind.data);
                 }
                 catch (error) {
                     reject({
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             "Content-Type": "application/json"
                         }
@@ -640,56 +665,10 @@ module.exports = function (context, req) {
             });
 
         }
-        // async function searchUnileverStatus(code) {
-        //     await createManagementClient();
-        //     return new Promise(function (resolve, reject) {
-        //         try {
-        //             management_client
-        //                 .db(MANAGEMENT_DB_NAME)
-        //                 .collection('unilevers')
-        //                 .findOne({ code: code },
-        //                     function (error, docs) {
-        //                         if (error) {
-        //                             reject({
-        //                                 status: 500,
-        //                                 body: error.toString(),
-        //                                 headers: {
-        //                                     'Content-Type': 'application / json'
-        //                                 }
-        //                             });
-        //                             return;
-        //                         }
-        //                         if (!docs) {
-        //                             reject({
-        //                                 status: 400,
-        //                                 body: {
-        //                                     message: 'MG-016'
-        //                                 },
-        //                                 headers: {
-        //                                     'Content-Type': 'application / json'
-        //                                 }
-        //                             });
-        //                         }
-        //                         resolve(docs);
-        //                     }
-        //                 );
-        //         }
-        //         catch (error) {
-        //             context.log(error);
-        //             reject({
-        //                 status: 500,
-        //                 body: error.toString(),
-        //                 headers: {
-        //                     "Content-Type": "application/json"
-        //                 }
-        //             })
-        //         }
-        //     });
-        // }
         async function writeChange() {
-            await createEntriesDeparturesClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createEntriesDeparturesClient();
                     entries_departures_client
                         .db(ENTRIES_DEPARTURES_DB_NAME)
                         .collection('Changes')
@@ -697,7 +676,7 @@ module.exports = function (context, req) {
                             if (error) {
                                 reject({
                                     status: 500,
-                                    body: error,
+                                    body: error.toString(),
                                     headers: {
                                         'Content-Type': 'application / json'
                                     }
@@ -708,13 +687,13 @@ module.exports = function (context, req) {
                         });
                 }
                 catch (error) {
-                    reject({
+                    throw {
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             'Content-Type': 'application / json'
                         }
-                    });
+                    };
                 }
             });
         }
@@ -743,20 +722,14 @@ module.exports = function (context, req) {
                     resolve(updatedFridgesArray);
                 }
                 catch (error) {
-                    reject({
-                        status: 500,
-                        body: error,
-                        headers: {
-                            'Content-Type': 'application / json'
-                        }
-                    });
+                    reject(error);
                 }
             });
         }
         async function updateFridge(newValues, fridgeId) {
-            await createManagementClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createManagementClient();
                     management_client
                         .db(MANAGEMENT_DB_NAME)
                         .collection('fridges')
@@ -767,7 +740,7 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
@@ -779,31 +752,26 @@ module.exports = function (context, req) {
                         );
                 }
                 catch (error) {
-                    reject({
-
+                    throw {
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             'Content-Type': 'application / json'
                         }
-                    });
+                    };
                 }
             });
         }
     }
 
     async function PUT_change() {
-
-        validate();
-        //TODO: Get person data trough userid and save it in the change data
-        let change; //Base object
-        var userId = null;
-        var changeId = req.query['id'];
-
         try {
-            if (changeId) {
-                change = await getChange(changeId);
-            }
+            validate();
+            //TODO: Get person data trough userid and save it in the change data
+            var change; //Base object
+            var userId = null;
+            var changeId = req.query['id'];
+            change = await getChange(changeId);
             let fridges = await searchAllFridges(req.body['cabinets']);
 
             let precedentPromises = [change, fridges];
@@ -811,6 +779,7 @@ module.exports = function (context, req) {
             Promise.all(precedentPromises)
                 .then(async function () {
                     validateDestination();
+                    validateUnconfirmedChange();
                     let date = new Date();
                     let excedentFridges = getExcedentFridges(fridges, change.cabinets);
                     let missingFridges = getMissingFridges(fridges, change.cabinets);
@@ -825,12 +794,12 @@ module.exports = function (context, req) {
                         cabinets_faltantes: missingFridges
                     };
 
-                    let response = await updateChange(newValues, change['_id']);
+                    await updateChange(newValues, change['_id']);
                     await updateFridges(change);
-
+                    let response = await getChange(changeId);
                     context.res = {
                         status: 200,
-                        body: change,
+                        body: response,
                         headers: {
                             "Content-Type": "application/json"
                         }
@@ -838,8 +807,7 @@ module.exports = function (context, req) {
                     context.done();
                 })
                 .catch(function (error) {
-                    context.res = error;
-                    context.done();
+                    throw error;
                 });
 
         }
@@ -850,7 +818,7 @@ module.exports = function (context, req) {
             else {
                 context.res = {
                     status: 500,
-                    body: error,
+                    body: error.toString(),
                     headers: {
                         "Content-Type": "application/json"
                     }
@@ -859,11 +827,12 @@ module.exports = function (context, req) {
             context.done();
         }
 
+
         //Internal functions
         function validate() {
             //No id was provided
             if (!req.query) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-069'
@@ -872,10 +841,9 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
             }
             if (!req.query['id']) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-069'
@@ -884,11 +852,10 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
             }
             //Fridge array validation
             if (!req.body.cabinets) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-003'
@@ -897,10 +864,9 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
             }
             if (req.body.cabinets.length === 0) {
-                context.res = {
+                throw {
                     status: 400,
                     body: {
                         message: 'ES-003'
@@ -909,15 +875,13 @@ module.exports = function (context, req) {
                         'Content-Type': 'application / json'
                     }
                 };
-                context.done();
             }
-
         }
         function validateDestination() {
             //Destination validation
             if (change['sucursal_destino']) {
                 if (change['sucursal_destino']._id.toString() !== req.body['sucursal_destino']) {
-                    context.res = {
+                    throw {
                         status: 400,
                         body: {
                             message: 'ES-067'
@@ -926,13 +890,11 @@ module.exports = function (context, req) {
                             'Content-Type': 'application / json'
                         }
                     };
-                    context.done();
-                    return;
                 }
             }
             if (change['udn_destino']) {
                 if (change['udn_destino']._id.toString() !== req.body['udn_destino']) {
-                    context.res = {
+                    throw {
                         status: 400,
                         body: {
                             message: 'ES-068'
@@ -941,9 +903,20 @@ module.exports = function (context, req) {
                             'Content-Type': 'application / json'
                         }
                     };
-                    context.done();
-                    return;
                 }
+            }
+        }
+        function validateUnconfirmedChange() {
+            if (change.confirmado) {
+                throw {
+                    status: 400,
+                    body: {
+                        message: 'ES-070'
+                    },
+                    headers: {
+                        'Content-Type': 'application / json'
+                    }
+                };
             }
         }
         function searchAllFridges(fridgesId) {
@@ -967,9 +940,9 @@ module.exports = function (context, req) {
             });
         }
         async function searchFridge(fridgeInventoryNumber) {
-            await createManagementClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createManagementClient();
                     management_client
                         .db(MANAGEMENT_DB_NAME)
                         .collection('fridges')
@@ -978,12 +951,12 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
+                                    //return;
                                 }
 
                                 //Validations
@@ -998,51 +971,7 @@ module.exports = function (context, req) {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
-                                }
-                                if (docs['establecimiento']) {
-                                    //Fridge is in a store
-                                    err = {
-                                        status: 400,
-                                        body: {
-                                            message: 'ES-005'
-                                        },
-                                        headers: {
-                                            'Content-Type': 'application / json'
-                                        }
-                                    };
-                                    reject(err);
-                                    return;
-                                }
-                                if (docs['sucursal'] || docs['udn']) {
-                                    if (docs['sucursal']) {
-                                        if (docs['sucursal']._id !== originSubsidiaryId) {
-                                            err = {
-                                                status: 400,
-                                                body: {
-                                                    message: 'ES-021'
-                                                },
-                                                headers: {
-                                                    'Content-Type': 'application / json'
-                                                }
-                                            };
-                                            reject(err);
-                                            return;
-                                        }
-                                        if (docs['udn']._id !== originAgencyId) {
-                                            err = {
-                                                status: 400,
-                                                body: {
-                                                    message: 'ES-022'
-                                                },
-                                                headers: {
-                                                    'Content-Type': 'application / json'
-                                                }
-                                            };
-                                            reject(err);
-                                            return;
-                                        }
-                                    }
+                                    //return;
                                 }
                                 //Resolve correctly if all validations are passed        
                                 resolve(docs);
@@ -1050,7 +979,6 @@ module.exports = function (context, req) {
                         );
                 }
                 catch (error) {
-                    context.log(error);
                     reject({
                         status: 500,
                         body: error.toString(),
@@ -1062,9 +990,9 @@ module.exports = function (context, req) {
             });
         }
         async function updateChange(newValues, changeId) {
-            await createEntriesDeparturesClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createEntriesDeparturesClient();
                     management_client
                         .db(ENTRIES_DEPARTURES_DB_NAME)
                         .collection('Changes')
@@ -1075,12 +1003,11 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
                                 resolve(docs);
                             }
@@ -1088,9 +1015,8 @@ module.exports = function (context, req) {
                 }
                 catch (error) {
                     reject({
-
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             'Content-Type': 'application / json'
                         }
@@ -1129,20 +1055,14 @@ module.exports = function (context, req) {
                     resolve(updatedFridgesArray);
                 }
                 catch (error) {
-                    reject({
-                        status: 500,
-                        body: error,
-                        headers: {
-                            'Content-Type': 'application / json'
-                        }
-                    });
+                    reject(error);
                 }
             });
         }
         async function updateFridge(newValues, fridgeId) {
-            await createManagementClient();
-            return new Promise(function (resolve, reject) {
+            return new Promise(async function (resolve, reject) {
                 try {
+                    await createManagementClient();
                     management_client
                         .db(MANAGEMENT_DB_NAME)
                         .collection('fridges')
@@ -1153,12 +1073,11 @@ module.exports = function (context, req) {
                                 if (error) {
                                     reject({
                                         status: 500,
-                                        body: error,
+                                        body: error.toString(),
                                         headers: {
                                             'Content-Type': 'application / json'
                                         }
                                     });
-                                    return;
                                 }
                                 resolve(docs);
                             }
@@ -1166,9 +1085,8 @@ module.exports = function (context, req) {
                 }
                 catch (error) {
                     reject({
-
                         status: 500,
-                        body: error,
+                        body: error.toString(),
                         headers: {
                             'Content-Type': 'application / json'
                         }
@@ -1177,25 +1095,47 @@ module.exports = function (context, req) {
             });
         }
         async function getChange(changeId) {
-            await createEntriesDeparturesClient();
-            return new Promise(function (resolve, reject) {
-                entries_departures_client
-                    .db(ENTRIES_DEPARTURES_DB_NAME)
-                    .collection('Changes')
-                    .findOne({ _id: mongodb.ObjectId(changeId) },
-                        function (error, docs) {
-                            if (error) {
-                                reject({
-                                    status: 500,
-                                    body: error.toString(),
-                                    headers: {
-                                        'Content-Type': 'application/json'
-                                    }
-                                });
+            return new Promise(async function (resolve, reject) {
+                try {
+                    await createEntriesDeparturesClient();
+                    entries_departures_client
+                        .db(ENTRIES_DEPARTURES_DB_NAME)
+                        .collection('Changes')
+                        .findOne({ _id: mongodb.ObjectId(changeId) },
+                            function (error, docs) {
+                                if (error) {
+                                    reject({
+                                        status: 500,
+                                        body: error.toString(),
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        }
+                                    });
+                                }
+                                if (docs) {
+                                    resolve(docs);
+                                }
+                                else {
+                                    reject({
+                                        status: 404,
+                                        body: {},
+                                        headers: {
+                                            "Content-Type": "application/json"
+                                        }
+                                    });
+                                }
                             }
-                            resolve(docs);
+                        );
+                }
+                catch (error) {
+                    reject({
+                        status: 500,
+                        body: error.toString(),
+                        headers: {
+                            'Content-Type': 'application / json'
                         }
-                    );
+                    });
+                }
             });
         }
         function getExcedentFridges(fridges, sentFridges) {
